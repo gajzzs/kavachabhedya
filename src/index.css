@@ -1,0 +1,127 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background-color: #0a0e14;
+  color: #e2e8f0;
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0e14;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+/* Custom utility classes */
+@layer components {
+  .kavach-card {
+    @apply bg-kavach-surface border border-kavach-border rounded-lg;
+  }
+
+  .kavach-card-hover {
+    @apply transition-all duration-200 hover:border-kavach-border-light hover:bg-kavach-surface-2;
+  }
+
+  .kavach-input {
+    @apply bg-kavach-bg border border-kavach-border rounded-md px-3 py-2 text-kavach-text-primary placeholder-kavach-text-muted focus:outline-none focus:border-kavach-accent transition-colors;
+  }
+
+  .kavach-btn {
+    @apply px-4 py-2 rounded-md font-medium text-sm transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .kavach-btn-primary {
+    @apply bg-kavach-accent text-kavach-bg hover:bg-kavach-accent-light;
+  }
+
+  .kavach-btn-secondary {
+    @apply bg-kavach-surface-2 text-kavach-text-primary border border-kavach-border hover:border-kavach-border-light;
+  }
+
+  .kavach-btn-danger {
+    @apply bg-kavach-danger text-white hover:bg-red-600;
+  }
+
+  .kavach-badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-medium border;
+  }
+
+  .kavach-section-title {
+    @apply text-xs font-mono uppercase tracking-wider text-kavach-text-secondary;
+  }
+}
+
+/* Code block styling */
+.code-block {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.code-block .diff-add {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.code-block .diff-remove {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* Graph node styles */
+.graph-node {
+  transition: all 0.2s ease;
+}
+
+.graph-node:hover {
+  filter: brightness(1.2);
+}
+
+/* Status indicator dot */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.status-dot.active {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes scan {
+  0% {
+    top: 0%;
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    top: 100%;
+    opacity: 0.2;
+  }
+}
+
