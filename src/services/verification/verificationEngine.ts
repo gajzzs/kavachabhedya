@@ -39,17 +39,20 @@ function patchedFileFromCode(patchedCode: string, originalFile: SourceFile): Sou
 }
 
 // Re-run SAST against patched code - REAL static analysis
-function reRunSAST(patch: PatchCandidate, originalFile: SourceFile): { passed: boolean; newFindings: number; detail: string } {
+function reRunSAST(patch: PatchCandidate, originalFile: SourceFile, originalFinding: Finding): { passed: boolean; newFindings: number; remainingOriginal: number; detail: string } {
   const patchedFile = patchedFileFromCode(patch.patchedCode, originalFile);
   const sastResult = runSAST([patchedFile]);
   const newFindings = sastResult.findings.length;
+  const remainingOriginal = sastResult.findings.filter((f) => f.vulnerabilityClass === originalFinding.vulnerabilityClass).length;
+  const passed = remainingOriginal === 0;
 
   return {
-    passed: newFindings === 0,
+    passed,
     newFindings,
-    detail: newFindings === 0
-      ? 'SAST re-scan of patched code found 0 vulnerabilities. Original vulnerability pattern is eliminated.'
-      : `SAST re-scan found ${newFindings} issue(s) in patched code.`,
+    remainingOriginal,
+    detail: passed
+      ? `Original ${originalFinding.vulnerabilityClass} pattern is eliminated. Patched code contains ${newFindings} total finding(s), which are evaluated separately for regression.`
+      : `Patched code still contains ${remainingOriginal} finding(s) of the original class ${originalFinding.vulnerabilityClass}.`,
   };
 }
 
@@ -189,7 +192,7 @@ function runBufferOverflowVerification(input: VerificationInput, originalFile: S
   const { finding, patch } = input;
 
   // Step 1: Re-run SAST on patched code
-  const sastResult = reRunSAST(patch, originalFile);
+  const sastResult = reRunSAST(patch, originalFile, input.finding);
 
   // Step 2: Structural checks — verify bounds check was added
   const patchedCode = patch.patchedCode;
@@ -354,7 +357,9 @@ export function runVerification(input: VerificationInput): VerificationResult {
   const schema = extractSchema(originalFile);
 
   // Step 1: Re-run SAST on patched code (REAL)
-  const sastResult = reRunSAST(patch, originalFile);
+  // Passing the original finding lets verification distinguish a resolved
+  // vulnerability from an unrelated new finding.
+  const sastResult = reRunSAST(patch, originalFile, finding);
 
   // Step 2: Re-run original attack with REAL execution (REAL)
   const originalAttack = reRunOriginalAttack(patch, originalFile, schema);

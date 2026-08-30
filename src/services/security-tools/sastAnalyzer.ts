@@ -242,58 +242,87 @@ function buildDataFlow(
 ): { dataFlow: string[]; inputSource: string | undefined; taintReached: boolean } {
   const dataFlow: string[] = [];
   let inputSource: string | undefined;
-  let taintReached = false;
 
-  for (const varName of construction.variables) {
-    // Direct taint source?
-    const directSource = sources.find((s) => s.variable === varName);
-    if (directSource) {
-      inputSource = `${directSource.origin} → ${varName}`;
-      dataFlow.push(`${directSource.origin} (line ${directSource.line}) → ${varName}`);
-      taintReached = true;
-      continue;
-    }
+  // Fixed-point propagation makes simple alias chains robust:
+  // request -> a -> b -> c -> query -> execute().
+  const tainted = new Map<string, TaintSource>();
+  for (const src of sources) tainted.set(src.variable, src);
 
-    // Check if variable is assigned from a taint source (simple propagation)
+  const seenPaths = new Set<string>();
+  let changed = true;
+  let iterations = 0;
+  const maxIterations = Math.max(8, lines.length * 2);
+
+  while (changed && iterations++ < maxIterations) {
+    changed = false;
+
     for (let i = 0; i < lines.length; i++) {
-      const assignMatch = lines[i].match(new RegExp(`\\b${varName}\\s*=\\s*(.+)`));
-      if (assignMatch) {
-        const rhs = assignMatch[1].trim();
-        // Check if RHS references a taint source
-        for (const src of sources) {
-          if (rhs.includes(src.variable)) {
-            inputSource = inputSource || `${src.origin} → ${src.variable} → ${varName}`;
-            dataFlow.push(`${src.origin} (line ${src.line}) → ${src.variable} (line ${i + 1}) → ${varName}`);
-            taintReached = true;
-            break;
-          }
+      const line = lines[i];
+      const assign = line.match(/^\s*(\w+)\s*=\s*(.+)$/);
+      if (!assign) continue;
+
+      const target = assign[1];
+      const rhs = assign[2];
+      const refs = [...rhs.matchAll(/\b([A-Za-z_]\w*)\b/g)].map((m) => m[1]);
+      const sourceRef = refs.map((r) => tainted.get(r)).find(Boolean);
+
+      // Also track function-call arguments and collection indexing because these
+      // are common ways developers accidentally break naive taint analysis.
+      if (sourceRef && !tainted.has(target)) {
+        tainted.set(target, sourceRef);
+        changed = true;
+        const path = `${sourceRef.origin} (line ${sourceRef.line}) → ${sourceRef.variable} → ${target} (line ${i + 1})`;
+        if (!seenPaths.has(path)) {
+          dataFlow.push(path);
+          seenPaths.add(path);
         }
-        // Check for dictionary/criteria propagation: criteria["key"] = var
-        const dictMatch = rhs.match(/(\w+)\[["'](\w+)["']\]\s*=\s*(\w+)/);
-        if (dictMatch) {
-          const dictVar = dictMatch[1];
-          const innerVar = dictMatch[3];
-          const innerSource = sources.find((s) => s.variable === innerVar);
-          if (innerSource) {
-            inputSource = inputSource || `${innerSource.origin} → ${innerVar} → ${dictVar}["${dictMatch[2]}"] → ${varName}`;
-            dataFlow.push(`${innerSource.origin} (line ${innerSource.line}) → ${innerVar} → ${dictVar}["${dictMatch[2]}"] → ${varName}`);
-            taintReached = true;
-          }
+        inputSource = inputSource || `${sourceRef.origin} → ${sourceRef.variable} → ${target}`;
+      }
+
+      // Dictionary/list assignment such as params["name"] = username or
+      // value = params["name"] is represented as a tainted container.
+      const indexed = rhs.match(/\b(\w+)\s*\[\s*["']([^"']+)["']\s*\]/);
+      if (indexed && tainted.has(indexed[1]) && !tainted.has(target)) {
+        const src = tainted.get(indexed[1])!;
+        tainted.set(target, src);
+        changed = true;
+        const path = `${src.origin} (line ${src.line}) → ${indexed[1]}["${indexed[2]}"] → ${target} (line ${i + 1})`;
+        if (!seenPaths.has(path)) {
+          dataFlow.push(path);
+          seenPaths.add(path);
         }
-        break;
+        inputSource = inputSource || `${src.origin} → ${indexed[1]}["${indexed[2]}"] → ${target}`;
       }
     }
+  }
 
-    // Function parameter propagation: def search_users(username): ... query = f"... {username}"
+  // Function parameters are potential external inputs. We retain this behavior,
+  // but only mark a construction tainted when the actual construction variable
+  // is a parameter or has received taint through the fixed-point pass.
+  for (const varName of construction.variables) {
+    if (tainted.has(varName)) continue;
     for (let i = 0; i < lines.length; i++) {
       const funcMatch = lines[i].match(new RegExp(`def\\s+\\w+\\s*\\([^)]*\\b${varName}\\b[^)]*\\)`));
       if (funcMatch) {
+        const synthetic: TaintSource = {
+          variable: varName,
+          origin: 'function_parameter',
+          line: i + 1,
+          type: 'FUNCTION_PARAM',
+        };
+        tainted.set(varName, synthetic);
         dataFlow.push(`function parameter: ${varName} (line ${i + 1})`);
-        // Mark as taint-reached since function params are external input
-        taintReached = true;
-        if (!inputSource) inputSource = `function parameter → ${varName}`;
+        inputSource = inputSource || `function parameter → ${varName}`;
         break;
       }
+    }
+  }
+
+  const taintReached = construction.variables.some((v) => tainted.has(v));
+  if (taintReached) {
+    for (const varName of construction.variables) {
+      const src = tainted.get(varName);
+      if (src && !inputSource) inputSource = `${src.origin} → ${varName}`;
     }
   }
 

@@ -18,6 +18,7 @@ import { SecurityMemoryPage } from '@/pages/SecurityMemoryPage';
 import { AgentGuardianPage } from '@/pages/AgentGuardianPage';
 import { AuditLogPage } from '@/pages/AuditLogPage';
 import { CppDynamicLabPage } from '@/pages/CppDynamicLabPage';
+import { BenchmarkPage } from '@/pages/BenchmarkPage';
 import { runFullDemo } from '@/services/demoEngine';
 import { demoProjects } from '@/services/demoProjects';
 import type { AuditEvent, AgentAction, Finding, Evidence, Experiment, Hypothesis, PatchCandidate, VerificationRun, SecurityMemory, TwinSnapshot, AttackPath, LLMReasoningResult, InvestigationStep, InvestigationStepStatus } from '@/types';
@@ -37,6 +38,7 @@ const PAGE_TITLES: Record<PageId, string> = {
   'memory': 'Security Memory',
   'guardian': 'Agent Guardian',
   'audit': 'Audit Log',
+  'benchmark': 'Adversarial Benchmark',
 };
 
 function KavachApp() {
@@ -114,6 +116,7 @@ function KavachApp() {
       case 'memory': return <SecurityMemoryPage />;
       case 'guardian': return <AgentGuardianPage />;
       case 'audit': return <AuditLogPage />;
+      case 'benchmark': return <BenchmarkPage />;
       default: return <OverviewPage onNavigate={setCurrentPage} />;
     }
   };

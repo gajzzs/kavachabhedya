@@ -78,8 +78,11 @@ interface PayloadDefinition {
 // Generate context-aware payloads based on the SQL context extracted from source.
 // These are NOT a static list — the categories and payloads are chosen based on
 // the column, table, and quote style detected in the source.
-function generateContextAwarePayloads(column: string, table: string, hasQuotes: boolean): PayloadDefinition[] {
-  const colCount = 4; // Default to 4 columns for UNION tests (id, username, email, role)
+function generateContextAwarePayloads(column: string, table: string, hasQuotes: boolean, tableColumns: string[] = []): PayloadDefinition[] {
+  // Derive UNION arity from the source schema instead of assuming a users table.
+  // If schema extraction is unavailable, use the smallest useful fallback.
+  const colCount = Math.max(tableColumns.length, 1);
+  const nullColumns = Array.from({ length: colCount }, () => 'NULL').join(', ');
   const payloads: PayloadDefinition[] = [];
 
   // 1. Safe control input (baseline comparison)
@@ -134,7 +137,7 @@ function generateContextAwarePayloads(column: string, table: string, hasQuotes: 
   });
 
   // 7. UNION-based data extraction
-  const unionCols = Array.from({ length: colCount }, () => 'NULL').join(', ');
+  const unionCols = nullColumns;
   payloads.push({
     input: `' UNION SELECT ${unionCols}--`,
     category: 'UNION_DATA_EXTRACTION',
@@ -144,7 +147,7 @@ function generateContextAwarePayloads(column: string, table: string, hasQuotes: 
 
   // 8. UNION with explicit data
   payloads.push({
-    input: `' UNION SELECT 999, 'attacker', 'attacker@evil.com', 'admin'--`,
+    input: `' UNION SELECT ${Array.from({ length: colCount }, (_, i) => i === 0 ? '999' : i === 1 ? "'attacker'" : "'test'").join(', ')}--`,
     category: 'UNION_PRIVILEGE_ESCALATION',
     reason: `UNION injection with crafted admin row to test privilege escalation via ${table}`,
     confidence: 'MEDIUM',
@@ -160,7 +163,7 @@ function generateContextAwarePayloads(column: string, table: string, hasQuotes: 
 
   // 10. Stacked query — INSERT
   payloads.push({
-    input: `'; INSERT INTO ${table} (id, username, email, role) VALUES (100, 'hacker', 'hacker@evil.com', 'admin')--`,
+    input: `'; INSERT INTO ${table} (${tableColumns.length ? tableColumns.join(', ') : 'id, username, email, role'}) VALUES (${(tableColumns.length ? tableColumns : ['id', 'username', 'email', 'role']).map((_, i) => i === 0 ? '100' : i === 1 ? "'hacker'" : "'test'").join(', ')})--`,
     category: 'STACKED_QUERY_INSERT',
     reason: `Tests stacked query by inserting a malicious admin row into ${table}`,
     confidence: 'MEDIUM',
@@ -271,7 +274,8 @@ export function runFuzzer(finding: Finding, files: SourceFile[]): FuzzResult {
   const hasQuotes = /WHERE\s+\w+\s*=\s*['"]?\{/.test(content) || /WHERE\s+\w+\s*=\s*['"]?["']\s*\+/.test(content) || /WHERE\s+\w+\s*=\s*['"]/.test(content);
 
   // Generate context-aware payloads
-  const payloadDefs = generateContextAwarePayloads(column, table, hasQuotes);
+  const tableColumns = schema.tables.find((t) => t.name.toLowerCase() === table.toLowerCase())?.columns || [];
+  const payloadDefs = generateContextAwarePayloads(column, table, hasQuotes, tableColumns);
 
   // STEP 1: Execute baseline with safe input
   const baselineInput = 'alice';

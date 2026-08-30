@@ -135,7 +135,7 @@ function executeSelect(db: MemoryDB, query: string): { rows: Record<string, unkn
     const tableName = unionMatch[2];
     const whereClause = unionMatch[3];
     const table = db.tables.get(tableName);
-    if (!table) return { rows: [], error: `Table "${tableName}" not found`, tablesAffected, syntaxError: false };
+    if (!table) return { rows: [], error: `Table "${tableName}" not found`, tablesAffected, syntaxError: true };
 
     tablesAffected.push(tableName);
 
@@ -147,8 +147,19 @@ function executeSelect(db: MemoryDB, query: string): { rows: Record<string, unkn
       baseRows = filtered.rows;
     }
 
-    // Parse UNION columns — we just return the injected data
+    // Validate UNION arity against the actual source-derived schema.
+    // A mismatch is an execution failure, not evidence of successful injection.
     const unionPart = unionMatch[4];
+    const expectedColumns = table.columns.length;
+    const unionColumnCount = countTopLevelSelectColumns(unionPart);
+    if (unionColumnCount !== expectedColumns) {
+      return {
+        rows: [],
+        error: `UNION column count mismatch: expected ${expectedColumns}, received ${unionColumnCount}`,
+        tablesAffected,
+        syntaxError: true,
+      };
+    }
     const unionCols = parseUnionColumns(unionPart, db);
 
     // Combine base rows with union rows
@@ -164,7 +175,7 @@ function executeSelect(db: MemoryDB, query: string): { rows: Record<string, unkn
     const whereClause = selectMatch[3]?.trim();
 
     const table = db.tables.get(tableName);
-    if (!table) return { rows: [], error: `Table "${tableName}" not found`, tablesAffected, syntaxError: false };
+    if (!table) return { rows: [], error: `Table "${tableName}" not found`, tablesAffected, syntaxError: true };
 
     tablesAffected.push(tableName);
 
@@ -262,8 +273,28 @@ function filterRows(rows: Record<string, unknown>[], whereClause: string): { row
     return { rows: rows.filter((r) => String(r[col]) === val), syntaxError: false, error: null };
   }
 
-  // Can't parse — return all rows as fallback (conservative)
-  return { rows, syntaxError: false, error: null };
+  // Unknown predicate semantics must never be treated as successful.
+  // Returning all rows here could turn an unsupported query into a false
+  // security signal. Mark it INCONCLUSIVE via syntaxError instead.
+  return { rows: [], syntaxError: true, error: `Unsupported WHERE expression: ${commentStripped.substring(0, 100)}` };
+}
+
+function countTopLevelSelectColumns(selectPart: string): number {
+  let depth = 0;
+  let quote: string | null = null;
+  let count = 1;
+  for (let i = 0; i < selectPart.length; i++) {
+    const ch = selectPart[i];
+    if (quote) {
+      if (ch === quote && selectPart[i - 1] !== '\\') quote = null;
+      continue;
+    }
+    if (ch === "'" || ch === '"') { quote = ch; continue; }
+    if (ch === '(') depth++;
+    else if (ch === ')') depth = Math.max(0, depth - 1);
+    else if (ch === ',' && depth === 0) count++;
+  }
+  return selectPart.trim() ? count : 0;
 }
 
 function parseUnionColumns(unionSelect: string, db: MemoryDB): Record<string, unknown>[] {

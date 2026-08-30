@@ -1,7 +1,7 @@
-import { Shield, LayoutDashboard, Search, Box, Network, GitBranch, FlaskConical, CheckCircle, Database, Lock, ScrollText, Zap, FileSearch, Target, Cpu } from 'lucide-react';
+import { Shield, LayoutDashboard, Search, Box, Network, GitBranch, FlaskConical, CheckCircle, Database, Lock, ScrollText, Zap, FileSearch, Target, Cpu, FlaskConical as BenchmarkIcon } from 'lucide-react';
 import { useKavach } from '@/store/KavachContext';
 
-export type PageId = 'overview' | 'investigations' | 'fuzzing' | 'cpp-dynamic' | 'twin' | 'evidence-graph' | 'attack-paths' | 'patch-lab' | 'verification' | 'sarif' | 'memory' | 'guardian' | 'audit' | 'real-assessment';
+export type PageId = 'overview' | 'investigations' | 'fuzzing' | 'cpp-dynamic' | 'twin' | 'evidence-graph' | 'attack-paths' | 'patch-lab' | 'verification' | 'sarif' | 'memory' | 'guardian' | 'audit' | 'real-assessment' | 'benchmark';
 
 interface NavItem {
   id: PageId;
@@ -33,6 +33,7 @@ export function Sidebar({ currentPage, onNavigate }: SidebarProps) {
     { id: 'memory', label: 'Security Memory', icon: Database, badge: securityMemory.length || undefined },
     { id: 'guardian', label: 'Agent Guardian', icon: Lock },
     { id: 'audit', label: 'Audit Log', icon: ScrollText, badge: auditEvents.length || undefined },
+    { id: 'benchmark', label: 'Adversarial Benchmark', icon: BenchmarkIcon },
   ];
 
   return (
